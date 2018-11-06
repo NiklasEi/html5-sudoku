@@ -7,7 +7,6 @@ const timer = document.getElementById("timer");
 canvas.width = window.innerWidth;
 // leave 60px for top margin
 canvas.height = window.innerHeight - 60;
-canvas.style.backgroundColor = "darkgray";
 
 window.addEventListener('resize', resizeCanvas, false);
 
@@ -21,173 +20,43 @@ function resizeCanvas() {
 let images = {};
 preLoad();
 
-const sizePerBox = 30;
-const columns = Math.floor(canvas.width/sizePerBox);
-const rows = Math.floor(canvas.height/sizePerBox);
-const offsetX = Math.floor((canvas.width % sizePerBox)/2);
-const offsetY = Math.floor((canvas.height % sizePerBox)/2);
-const numberOfBombs = Math.floor((columns * rows) / 8);
-let leftToUncover = (columns * rows) - numberOfBombs;
-let flags = 0;
+const outerBorderSize = 10;
+const sizePerBox = Math.min(Math.floor((canvas.width - 4*outerBorderSize) / 9), Math.floor((canvas.height - 4*outerBorderSize) / 9));
+const offsetLeft = Math.floor(((canvas.width - 4*outerBorderSize) - 9*sizePerBox)/2);
+const offsetTop = Math.floor(((canvas.height - 4*outerBorderSize) - 9*sizePerBox)/2);
 let running = false;
-let started = false;
-
 
 const grid = [];
-for (let row = 0; row < rows; row++) {
-    for (let column = 0; column < columns; column++) {
-        grid.push({
-            isBomb: false,
-            isCovered: true,
-            isFlagged: false,
-            warning: 0,
-            neighbors: getNeighbors(row, column),
-            img: images.cover
-        });
-    }
-}
-
-console.log("Grid with " + grid.length + " slots and " + numberOfBombs + " bombs.");
-
-for (let i = 0; i < numberOfBombs; i++) {
-    let randColumn = Math.floor((Math.random() * columns));
-    let randRow = Math.floor((Math.random() * rows));
-    let slot = grid[randRow * columns + randColumn];
-    if (slot.isBomb) {
-        i--;
-        continue;
-    }
-    slot.isBomb = true;
-    for (let neighborSlot in slot.neighbors) {
-        if (!slot.neighbors.hasOwnProperty(neighborSlot)) continue;
-        grid[slot.neighbors[neighborSlot]].warning ++;
-    }
-}
-
-function render() {
-    for (let column = 0; column < columns; column++) {
-        for (let row = 0; row < rows; row++) {
-            let slot = grid[row * columns + column];
-            draw(slot.img, column, row);
+function prepareGrid(hints) {
+    for (let row = 0; row < 9; row++) {
+        grid[row] = [3];
+        for (let column = 0; column < 9; column++) {
+            let hint = hints[row*9 + column];
+            grid[row][column] = new Slot(hint, hint > 0, row, column);
+            draw(grid[row][column]);
         }
     }
 }
 
-function draw(img, column, row) {
-    ctx.drawImage(img, column * sizePerBox + offsetX, row * sizePerBox + offsetY, sizePerBox, sizePerBox);
+function draw(slot) {
+    console.log("current value: " + slot.value);
+    let offsetX = (Math.floor(slot.column / 3) + 1) * outerBorderSize + offsetLeft;
+    let offsetY = (Math.floor(slot.row / 3) + 1) * outerBorderSize + offsetTop;
+    ctx.drawImage(slot.getImage(), slot.column * sizePerBox + offsetX, slot.row * sizePerBox + offsetY, sizePerBox, sizePerBox);
 }
 
 function update() {
-    document.title = "Mines: " + flags + "/" + numberOfBombs;
-    head.innerText = "Mines: " + flags + "/" + numberOfBombs;
-}
-
-function getNeighbors(row, column) {
-    let neighbors = [];
-    // left, right, top, bottom
-    if (column > 0) {
-        neighbors.push(row * columns + column - 1)
-    }
-    if (row > 0) {
-        neighbors.push((row - 1)* columns + column)
-    }
-    if (column < columns - 1) {
-        neighbors.push(row * columns + column + 1)
-    }
-    if (row < rows - 1) {
-        neighbors.push((row + 1)* columns + column)
-    }
-    // four corners
-    if (column > 0 && row > 0) {
-        neighbors.push((row - 1) * columns + column - 1)
-    }
-    if (column > 0 && row < rows - 1) {
-        neighbors.push((row + 1)* columns + column - 1)
-    }
-    if (column < columns - 1 && row > 0) {
-        neighbors.push((row - 1) * columns + column + 1)
-    }
-    if (column < columns - 1 && row < rows - 1) {
-        neighbors.push((row + 1) * columns + column + 1)
-    }
-    return neighbors;
+    document.title = "Sudoku";
+    head.innerText = "Happy puzzling!";
 }
 
 function start() {
     running = true;
-    render();
+    prepareGrid([..."013000062020609008085214730204006053500100870801547090092380640050470980740900005"]);
     update();
-    timer.innerText = "Click to start";
+    runTimer();
 }
 window.onload = start;
-
-function uncover(x, y) {
-    let slot = grid[y * columns + x];
-    if (!slot.isCovered) return;
-    if (slot.isFlagged) return;
-    if (slot.isBomb) lost();
-    else slot.img = images[slot.warning];
-    slot.isCovered = false;
-    if (leftToUncover === 1) won();
-    else leftToUncover --;
-    console.log("left: " + leftToUncover);
-    draw(slot.img, x, y);
-    if (slot.warning === 0) {
-        collectSlotsToUncover(x, y);
-        uncoverArea();
-    }
-}
-
-let slotsToUncover = new Set();
-function collectSlotsToUncover(x, y) {
-    let slot = grid[y * columns + x];
-    for (let i in slot.neighbors) {
-        if (!slot.neighbors.hasOwnProperty(i)) continue;
-        let slotToUncover = slot.neighbors[i];
-        if (slotsToUncover.has(slotToUncover)) continue;
-        if (grid[slotToUncover].isBomb) continue;
-        if (grid[slotToUncover].isFlagged) continue;
-        if (!grid[slotToUncover].isCovered) continue;
-        slotsToUncover.add(slotToUncover);
-        if ((grid[slotToUncover].warning === 0) && !grid[slotToUncover].isFlagged)
-            collectSlotsToUncover(slotToUncover % columns, Math.floor(slotToUncover / columns));
-    }
-}
-
-function uncoverArea() {
-    for (let slotNum of slotsToUncover) {
-        let slot = grid[slotNum];
-        slot.isCovered = false;
-        slot.img = images[slot.warning];
-        leftToUncover --;
-        console.log("left: " + leftToUncover);
-        draw(slot.img, slotNum % columns, Math.floor(slotNum / columns))
-    }
-    if (leftToUncover === 1) won();
-    slotsToUncover.clear();
-}
-
-function flag(x, y) {
-    let slot = grid[y * columns + x];
-    if (!slot.isCovered) return;
-    if (slot.isFlagged) {
-        flags --;
-        slot.img = images.cover;
-    } else {
-        flags ++;
-        slot.img = images.flag;
-    }
-    slot.isFlagged = !slot.isFlagged;
-    draw(slot.img, x, y);
-    update();
-}
-
-function lost() {
-    uncoverAll();
-    document.title = "You lost!";
-    head.innerText = "You lost!";
-    stopGame();
-}
 
 function won() {
     document.title = "You won!";
@@ -200,50 +69,66 @@ function stopGame() {
     clearTimeout(timerID);
 }
 
-function uncoverAll() {
-    for (let column = 0; column < columns; column++) {
-        for (let row = 0; row < rows; row++) {
-            let slot = grid[row * columns + column];
-            if (slot.isBomb) slot.img = images.mine;
-            else slot.img = images[slot.warning];
-            draw(slot.img, column, row);
-        }
-    }
-}
-
 function preLoad() {
-    const cover = new Image();
-    cover.src = "src/assets/cover.png";
-    const warning0 = new Image();
-    warning0.src = "src/assets/0.png";
-    const warning1 = new Image();
-    warning1.src = "src/assets/1.png";
-    const warning2 = new Image();
-    warning2.src = "src/assets/2.png";
-    const warning3 = new Image();
-    warning3.src = "src/assets/3.png";
-    const warning4 = new Image();
-    warning4.src = "src/assets/4.png";
-    const warning5 = new Image();
-    warning5.src = "src/assets/5.png";
-    const warning6 = new Image();
-    warning6.src = "src/assets/6.png";
-    const warning7 = new Image();
-    warning7.src = "src/assets/7.png";
-    const warning8 = new Image();
-    warning8.src = "src/assets/8.png";
+    const border_big = new Image();
+    border_big.src = "src/assets/border_big.png";
+    const border_big_1 = new Image();
+    border_big_1.src = "src/assets/border_big_1.png";
+    const border_big_2 = new Image();
+    border_big_2.src = "src/assets/border_big_2.png";
+    const border_big_3 = new Image();
+    border_big_3.src = "src/assets/border_big_3.png";
+    const border_big_4 = new Image();
+    border_big_4.src = "src/assets/border_big_4.png";
+    const border_big_5 = new Image();
+    border_big_5.src = "src/assets/border_big_5.png";
+    const border_big_6 = new Image();
+    border_big_6.src = "src/assets/border_big_6.png";
+    const border_big_7 = new Image();
+    border_big_7.src = "src/assets/border_big_7.png";
+    const border_big_8 = new Image();
+    border_big_8.src = "src/assets/border_big_8.png";
+    const border_big_9 = new Image();
+    border_big_9.src = "src/assets/border_big_9.png";
+    const border_big_1_hint = new Image();
+    border_big_1_hint.src = "src/assets/border_big_1_hint.png";
+    const border_big_2_hint = new Image();
+    border_big_2_hint.src = "src/assets/border_big_2_hint.png";
+    const border_big_3_hint = new Image();
+    border_big_3_hint.src = "src/assets/border_big_3_hint.png";
+    const border_big_4_hint = new Image();
+    border_big_4_hint.src = "src/assets/border_big_4_hint.png";
+    const border_big_5_hint = new Image();
+    border_big_5_hint.src = "src/assets/border_big_5_hint.png";
+    const border_big_6_hint = new Image();
+    border_big_6_hint.src = "src/assets/border_big_6_hint.png";
+    const border_big_7_hint = new Image();
+    border_big_7_hint.src = "src/assets/border_big_7_hint.png";
+    const border_big_8_hint = new Image();
+    border_big_8_hint.src = "src/assets/border_big_8_hint.png";
+    const border_big_9_hint = new Image();
+    border_big_9_hint.src = "src/assets/border_big_9_hint.png";
 
     images = {
-        cover: cover,
-        1: warning0,
-        2: warning1,
-        3: warning2,
-        4: warning3,
-        5: warning4,
-        6: warning5,
-        7: warning6,
-        8: warning7,
-        9: warning8
+        0: border_big,
+        1: border_big_1,
+        2: border_big_2,
+        3: border_big_3,
+        4: border_big_4,
+        5: border_big_5,
+        6: border_big_6,
+        7: border_big_7,
+        8: border_big_8,
+        9: border_big_9,
+        hint1: border_big_1_hint,
+        hint2: border_big_2_hint,
+        hint3: border_big_3_hint,
+        hint4: border_big_4_hint,
+        hint5: border_big_5_hint,
+        hint6: border_big_6_hint,
+        hint7: border_big_7_hint,
+        hint8: border_big_8_hint,
+        hint9: border_big_9_hint,
     };
 }
 
@@ -266,64 +151,89 @@ if('ontouchstart' in window) {
     canvas.addEventListener("touchend", onTouchEnd, false);
 } else canvas.addEventListener("mousedown", onClick, false);
 
+function getSlot(x, y) {
+    x -= canvas.offsetLeft;
+    y -= canvas.offsetTop;
+
+    x -= offsetLeft;
+    y -= offsetTop;
+
+    if (x < 0 || y < 0) return undefined;
+
+    let outerColumn = Math.floor(x / (outerBorderSize + 3*sizePerBox));
+    let outerRow = Math.floor(y / (outerBorderSize + 3*sizePerBox));
+
+    if (outerColumn > 2 || outerRow > 2) return undefined;
+
+    x -= outerColumn * (outerBorderSize + 3*sizePerBox);
+    y -= outerRow * (outerBorderSize + 3*sizePerBox);
+
+    x -= outerBorderSize;
+    y -= outerBorderSize;
+
+    if (x < 0 || y < 0) return undefined;
+
+    let column = outerColumn*3 + Math.floor(x / sizePerBox);
+    let row = outerRow*3 + Math.floor(y / sizePerBox);
+
+    return grid[row][column];
+}
+
 function onClick(event) {
     if (!running) return;
-    if (!started) {
-        started = true;
-        runTimer();
-    }
 
     let x = event.x;
     let y = event.y;
 
-    x -= canvas.offsetLeft;
-    y -= canvas.offsetTop;
+    let slot = getSlot(x, y);
+    if (slot === undefined) return;
+    if (slot.hint) return;
 
-    if (event.button === 0) uncover(Math.floor(x / sizePerBox), Math.floor(y / sizePerBox));
-    if (event.button === 2) flag(Math.floor(x / sizePerBox), Math.floor(y / sizePerBox));
+    if (event.button === 0) {
+        console.log("value: " + slot.value);
+        if (slot.value >= 9) {
+            slot.update.bind(slot)(0);
+            return;
+        } else {
+            slot.update.bind(slot)(1 + parseFloat(slot.value));
+            console.log("value now: " + slot.value);
+        }
+    }
+    if (event.button === 2) return;
 }
-
-let currentTouchTimer;
-let longTouchDuration = 500;
-let ignoreTouchEnd = false;
 
 function onTouchStart(event) {
-    if (!started) {
-        started = true;
-        runTimer();
-    }
     if (event.changedTouches.length === 1) { //one finger touch
         let touch = event.changedTouches[0];
 
         let x = touch.pageX;
         let y = touch.pageY;
 
-        x -= canvas.offsetLeft;
-        y -= canvas.offsetTop;
+        let slot = getSlot(x, y);
+        if (slot === undefined) return;
+        if (slot.hint) return;
 
-        currentTouchTimer = setTimeout(function() { touchFlag(Math.floor(x / sizePerBox), Math.floor(y / sizePerBox)); }, longTouchDuration);
+        if (slot.value >= 9) {
+            slot.update.bind(slot)(0);
+            return;
+        } else {
+            slot.update.bind(slot)(1 + parseFloat(slot.value));
+        }
         event.preventDefault();
     }
 }
 
-function touchFlag(x, y) {
-    flag(x, y);
-    ignoreTouchEnd = true;
-}
-
-function onTouchEnd(event) {
-    if (event.changedTouches.length === 1) { //one finger touch
-        let touch = event.changedTouches[0];
-
-        let x = touch.pageX;
-        let y = touch.pageY;
-
-        x -= canvas.offsetLeft;
-        y -= canvas.offsetTop;
-
-        clearTimeout(currentTouchTimer);
-        if (!ignoreTouchEnd) uncover(Math.floor(x / sizePerBox), Math.floor(y / sizePerBox));
-        else ignoreTouchEnd = false;
-        event.preventDefault();
-    }
+function Slot(value, hint, row, column) {
+    this.value = value;
+    this.hint = hint;
+    this.row = row;
+    this.column = column;
+    this.getImage = function () {
+        if (hint) return images["hint" + this.value];
+        return images[this.value];
+    };
+    this.update = function (newValue) {
+        this.value = newValue;
+        draw(this);
+    };
 }
