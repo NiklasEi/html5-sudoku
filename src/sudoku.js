@@ -7,6 +7,7 @@ const timer = document.getElementById("timer");
 canvas.width = window.innerWidth;
 // leave 60px for top margin
 canvas.height = window.innerHeight - 60;
+canvas.backgroundColor = "black";
 
 window.addEventListener('resize', resizeCanvas, false);
 
@@ -52,7 +53,9 @@ function update() {
 
 function start() {
     running = true;
-    prepareGrid([..."013000062020609008085214730204006053500100870801547090092380640050470980740900005"]);
+    // ToDo get random line from puzzles.yml
+    let randomPuzzle = "100900300900002001328741659080103004509204800740009216070000003030826075295017068";
+    prepareGrid([...randomPuzzle]);
     update();
     runTimer();
 }
@@ -190,18 +193,23 @@ function onClick(event) {
     if (slot.hint) return;
 
     if (event.button === 0) {
-        console.log("value: " + slot.value);
-        if (slot.value >= 9) {
-            slot.update.bind(slot)(0);
-            return;
-        } else {
-            slot.update.bind(slot)(1 + parseFloat(slot.value));
-            console.log("value now: " + slot.value);
-        }
+        action(slot);
     }
     if (event.button === 2) return;
 }
 
+function action(slot) {
+    if (slot.hint) return;
+
+    if (slot.value >= 9) {
+        slot.update.bind(slot)(0);
+    } else {
+        slot.update.bind(slot)(1 + parseFloat(slot.value));
+    }
+}
+
+let touchTimer;
+let touchTimeToAction = 500;
 function onTouchStart(event) {
     if (event.changedTouches.length === 1) { //one finger touch
         let touch = event.changedTouches[0];
@@ -211,16 +219,94 @@ function onTouchStart(event) {
 
         let slot = getSlot(x, y);
         if (slot === undefined) return;
-        if (slot.hint) return;
-
-        if (slot.value >= 9) {
-            slot.update.bind(slot)(0);
-            return;
-        } else {
-            slot.update.bind(slot)(1 + parseFloat(slot.value));
-        }
+        action(slot);
+        touchTimer = setTimeout(function () {
+            repeatedAction(slot);
+        }, touchTimeToAction);
         event.preventDefault();
     }
+}
+
+function repeatedAction(slot) {
+    action(slot);
+    touchTimer = setTimeout(function () {
+        repeatedAction(slot);
+    }, touchTimeToAction);
+}
+
+function onTouchEnd(event) {
+    clearTimeout(touchTimer);
+}
+
+function sortOccurrences(gridElement) {
+    let sorted = {};
+    for (let i = 0; i < gridElement.length; i++) {
+        if (!sorted.hasOwnProperty(gridElement[i].value)) {
+            sorted[gridElement[i].value] = 1;
+            continue;
+        }
+        sorted[gridElement[i].value] = parseFloat(sorted[gridElement[i].value] + 1);
+    }
+    return sorted;
+}
+
+function sameEntries(wanted, got) {
+    for (let key in wanted) {
+        if (!wanted.hasOwnProperty(key)) continue;
+        if (wanted[key] !== got[key]) return false;
+    }
+    return true;
+}
+
+function checkForSolution() {
+    let wanted = {
+        1: 1,
+        2: 1,
+        3: 1,
+        4: 1,
+        5: 1,
+        6: 1,
+        7: 1,
+        8: 1,
+        9: 1,
+    };
+
+    // check for zeros and invalid rows
+    for (let row = 0; row < 9; row++) {
+        let got = sortOccurrences(grid[row]);
+        if (!sameEntries(wanted, got)) return false;
+        for (let column = 0; column < 9; column++) {
+            let slot = grid[row][column];
+            if (slot.value < 1) return false;
+        }
+    }
+
+    // check for invalid columns
+    for (let column = 0; column < 9; column++) {
+        let columnSlots = [9];
+        for (let row = 0; row < 9; row++) {
+            columnSlots[row] = grid[row][column];
+        }
+        let got = sortOccurrences(columnSlots);
+        if (!sameEntries(wanted, got)) return false;
+    }
+
+    // check for invalid blocks
+    for (let bigColumn = 0; bigColumn < 3; bigColumn++) {
+        let bigSlot = [9];
+        for (let bigRow = 0; bigRow < 3; bigRow++) {
+            for (let column = 0; column < 3; column++) {
+                for (let row = 0; row < 3; row++) {
+                    bigSlot[row * 3 + column] = grid[bigRow * 3 + row][bigColumn * 3 + column];
+                }
+            }
+            let got = sortOccurrences(bigSlot);
+            if (!sameEntries(wanted, got)) return false;
+        }
+    }
+
+    // all fine, puzzle is solved
+    return true;
 }
 
 function Slot(value, hint, row, column) {
@@ -235,5 +321,8 @@ function Slot(value, hint, row, column) {
     this.update = function (newValue) {
         this.value = newValue;
         draw(this);
+        if ( checkForSolution()) {
+            won();
+        }
     };
 }
